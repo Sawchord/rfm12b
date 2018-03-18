@@ -3,4 +3,13 @@ name = "rfm12b"
 version = "0.1.0"
 authors = ["Leon Tan <leon.arian.tan@gmail.com>"]
 
-[dependencies]
+[dependencies.register]
+path = "../register"
+
+[dependencies.embedded-hal]
+version = "^0.1.2"
+features = ["unproven"]
+
+[dependencies.byteorder]
+default-features = false
+version = "^1.2.1"
