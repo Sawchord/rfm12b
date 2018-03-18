@@ -1,0 +1,6 @@
+[package]
+name = "rfm12b"
+version = "0.1.0"
+authors = ["Leon Tan <leon.arian.tan@gmail.com>"]
+
+[dependencies]
