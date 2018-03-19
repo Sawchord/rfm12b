@@ -13,3 +13,6 @@ features = ["unproven"]
 [dependencies.byteorder]
 default-features = false
 version = "^1.2.1"
+
+[dependencies.crc16]
+version = "^0.3.4"

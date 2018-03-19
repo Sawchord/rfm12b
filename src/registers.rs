@@ -1,27 +1,45 @@
 
+use core::marker::PhantomData;
+use register::OffsetSize;
+use register::{Mask, Read, Write};
 // Holds the register addresses of the 17 control registers
-pub enum RegisterAddress{
-    config_setting = 0x80,
-    power_management = 0x82,
-    freq_setting = 0xA0,
-    data_rate = 0xC6,
-    rx_control = 0x90,
-    data_filter = 0xC2,
-    fifo_and_reset_mode = 0xCA,
-    synchron_pattern = 0xCE,
-    receiver_fifo = 0xB0,
-    afc = 0xC4,
-    tx_config = 0x98,
-    pll_setting = 0xCC,
-    tx_register_write = 0xB8,
-    wake_up_timer = 0xE0,
-    low_duty_cycle = 0xC8,
-    low_bat_detector_and_cdiv = 0xC0,
-    status_read = 0x00,
+
+
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+pub enum Register{
+    ConfigSetting = 0x80,
+    PowerManagement = 0x82,
+    FreqSetting = 0xA0,
+    DataRate = 0xC6,
+    RxControl = 0x90,
+    DataFilter = 0xC2,
+    FifoAndResetMode = 0xCA,
+    SynchPattern = 0xCE,
+    ReceiverFifo = 0xB0,
+    Afc = 0xC4,
+    TxConfig = 0x98,
+    PllSetting = 0xCC,
+    TxRegisterWrite = 0xB8,
+    WakeUpTimer = 0xE0,
+    LowDutyCycle = 0xC8,
+    LowBatDetectorAndCdiv = 0xC0,
+    StatusRead = 0x00,
 }
 
+impl Register {
+    pub fn addr(&self) -> u8 {
+        *self as u8
+    }
+}
 
-register!(config_setting, 0x08, u8, {
+//impl Into<Register> for Register {
+//    fn into(self) -> Register {
+//        Register::Common(self)
+//    }
+//}
+
+register!(ConfigSetting, 0x08, u8, {
     #[doc = "Enables the internal TX data register"]
     enable_data_register @ 7,
     #[doc = "Enables the fifo mode"]
@@ -32,7 +50,7 @@ register!(config_setting, 0x08, u8, {
     crystal_load_capacitance @ 0..4,
 });
 
-register!(power_management, 0x08, u8, {
+register!(PowerManagement, 0x08, u8, {
     #[doc = "Enables the whole receiver chain (activates RF front end, baseband, synthesizer, crystal oscillator)"]
     enable_receiver_chain @ 7,
     #[doc = "Enables baseband circuit"]
@@ -51,19 +69,19 @@ register!(power_management, 0x08, u8, {
     disable_clock_output @ 0,
 });
 
-register!(frequency_setting, 0x0680, u16, {
+register!(FrequencySetting, 0x0680, u16, {
     #[doc = "Sets frequency"]
     frequency @ 0..12,
 });
 
-register!(data_rate, 0x23, u8, {
+register!(DataRate, 0x23, u8, {
     #[doc = "No idea what this is"]
     cs @ 7,
     #[doc = "Data rate"]
     data_rate @ 0..7,
 });
 
-register!(rx_control, 0x0080, u16, {
+register!(RxControl, 0x0080, u16, {
     #[doc = "Pin 16 function (0: interrupt input, 1: VDI input)"]
     p16_func @ 10,
     #[doc = "VDI signal response time (0..3: Fast - Slow, 4: Always on)"]
@@ -76,7 +94,7 @@ register!(rx_control, 0x0080, u16, {
     rssi_thresh @ 0..3,
 });
 
-register!(data_filter, 0x2C, u8, {
+register!(DataFilter, 0x2C, u8, {
     #[doc = "Enables clock recovery auto mode(1: auto, 0: use mode selected in bit 6)"]
     auto_clock_recovery_lock @ 7,
     #[doc = "Sets the clock recovery mode (0: slow, 1: fast)"]
@@ -87,7 +105,7 @@ register!(data_filter, 0x2C, u8, {
     dqd_theshold @ 0..3,
 });
 
-register!(fifo_and_reset_mode, 0x80, u8, {
+register!(FifoAndResetMode, 0x80, u8, {
     #[doc = "FIFO IT level"]
     fifo_it_level @ 4..8,
     #[doc = "synchron pattern length (0: 1b, 1: 2b)"]
@@ -97,15 +115,15 @@ register!(fifo_and_reset_mode, 0x80, u8, {
     #[doc = "FIFO will fill until this bit is cleared"]
     enable_fifo_fill @ 1,
     #[doc = "enable sensitive reset mode"]
-    sensitive_reset @ 0
+    sensitive_reset @ 0,
 });
 
-register!(synchron_pattern, 0xD4, u8, {
+register!(SynchPattern, 0xD4, u8, {
     #[doc = "The synchron pattern used by this radio"]
-    synchron_pattern @ 0..8
+    synchron_pattern @ 0..8,
 });
 
-register!(afc, 0xF7, u8, {
+register!(Afc, 0xF7, u8, {
     #[doc = "Automatic operation mode selector"]
     afc_selector @ 6..8,
     #[doc = "Range limit"]
@@ -120,7 +138,7 @@ register!(afc, 0xF7, u8, {
     enable_calculation @ 0,
 });
 
-register!(tx_config, 0x0000, u16, {
+register!(TxConfig, 0x0000, u16, {
     #[doc = "FSK modulation sign (0: +, 1: -)"]
     fsk_mod_sign @ 8,
     #[doc = "FSK modulation output frequency"]
@@ -129,7 +147,7 @@ register!(tx_config, 0x0000, u16, {
     output_power @ 0..3,
 });
 
-register!(pll_setting, 0x77, u8, {
+register!(PllSetting, 0x77, u8, {
     #[doc = "Output clock frequency"]
     output_clock_freq @ 5..7,
     #[doc = "Enable delay in phase detector"]
@@ -140,31 +158,31 @@ register!(pll_setting, 0x77, u8, {
     pll_bw @ 0,
 });
 
-register!(tx_register_write, 0xAA, u8, {
+register!(TxRegisterWrite, 0xAA, u8, {
     #[doc = "Writes byte to the transmitter data register"]
     tx_data_register @ 0..8,
 });
 
-register!(wake_up_timer, 0x0196, u16, {
+register!(WakeUpTimer, 0x0196, u16, {
     #[doc = "Wake up periods exponent"]
     wake_up_period_exponent @ 8..13,
     #[doc = "Wake up periods mantissa"]
     wake_up_period_mantissa @ 0..8,
 });
 
-register!(low_duty_cycle, 0x0E, u8, {
+register!(LowDutyCycle, 0x0E, u8, {
     #[doc = "duty cycle nominator"]
     duty_cycle_nominator @ 0..8,
 });
 
-register!(low_bat_detector_and_cdiv, 0x00, u8, {
+register!(LowBatDetector, 0x00, u8, {
     #[doc = "Threshold voltage"]
     v_thresh @ 5..8,
     #[doc = "Clock divider for the output clock"]
     cdiv @ 0..4,
 });
 
-register!(status_read, 0x0000, u32, {
+register!(StatusRead, 0x0000, u32, {
     #[doc = "TX is ready for next byte(TX mode)"]
     tx_ready @ 15,
     #[doc = "RX fifo threshold reached (RX mode)"]
@@ -177,11 +195,11 @@ register!(status_read, 0x0000, u32, {
     rx_undderrun @ 13,
     #[doc = "Wake-Up timer overflow"]
     wake_up_timer_underflow @ 12,
-    #[doc = "External interupt on Pin 16"],
+    #[doc = "External interupt on Pin 16"]
     p16_exti @ 11,
-    #[doc = "Low battery detect"],
+    #[doc = "Low battery detect"]
     low_bat_detec @ 10,
-    #[doc = "FIFO empty"],
+    #[doc = "FIFO empty"]
     fifo_empty @ 9,
     #[doc = "Antenna circuit detected signal above threshold"]
     ant_thresh @ 8,
