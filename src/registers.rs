@@ -28,14 +28,16 @@ pub enum Register{
 }
 
 impl Register {
-    pub fn addr(&self) -> u8 {
+    pub(crate) fn addr(&self) -> u8 {
         *self as u8
     }
 }
 
-//impl Into<Register> for Register {
-//    fn into(self) -> Register {
-//        Register::Common(self)
+
+// TODO: Figure out, why this does not work
+//impl Into<::Register> for Register {
+//    fn into(self) -> ::Register {
+//        ::Register::Common(self)
 //    }
 //}
 

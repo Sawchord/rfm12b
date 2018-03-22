@@ -63,6 +63,7 @@ pub struct Rfm12b<SPI, NCS, INT, RESET, BAND> {
 
 }
 
+// TODO: Replace Register types with Into<Register> traits
 impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
     where
         SPI: blocking::spi::Transfer<u8, Error = E> + blocking::spi::Write<u8, Error = E>,
@@ -71,13 +72,24 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
         RESET: ResetPin,
 {
 
-    fn write_control_register<R>(&mut self, register: Register, value: u16) -> Result<(), E>
+    fn read_register<R>(&mut self, register: Register) -> Result<u16, E>
         where
             R: Into<Register>,
     {
         self.ncs.set_low();
-        //let buffer = ((register.addr() as u16) << 8) | value;
-        let buffer = [1, 2] as [u8; 2];
+        let mut buffer: [u8; 2] = [register.addr(), 0];
+        self.spi.transfer(&mut buffer)?;
+        self.ncs.set_high();
+
+        Ok((buffer[0] as u16) << 8 | buffer[1] as u16)
+    }
+
+    fn write_register<R>(&mut self, register: Register, value: u16) -> Result<(), E>
+        where
+            R: Into<Register>,
+    {
+        self.ncs.set_low();
+        let buffer = [register.addr() | (value >> 8) as u8, value as u8];
         self.spi.write(&buffer)?;
         self.ncs.set_high();
 
