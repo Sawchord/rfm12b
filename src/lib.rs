@@ -1,5 +1,7 @@
 #![no_std]
 mod registers;
+mod band;
+
 
 #[macro_use]
 extern crate register;
@@ -8,15 +10,6 @@ extern crate byteorder;
 extern crate embedded_hal as hal;
 extern crate crc16;
 
-// The access traits of the registers
-#[derive(Clone, Copy)]
-pub struct Mhz433;
-
-#[derive(Clone, Copy)]
-pub struct Mhz868;
-
-#[derive(Clone, Copy)]
-pub struct Mhz915;
 
 
 use byteorder::{ByteOrder, BE};
@@ -24,6 +17,8 @@ use core::marker::PhantomData;
 
 use registers::Register;
 use register::*;
+
+use band::*;
 
 //use cast::{usize, u16, u32W};
 use hal::blocking::delay::DelayMs;
