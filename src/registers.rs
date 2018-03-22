@@ -184,7 +184,7 @@ register!(LowBatDetector, 0x00, u8, {
     cdiv @ 0..4,
 });
 
-register!(StatusRead, 0x0000, u32, {
+register!(StatusRead, 0x0000, u16, {
     #[doc = "TX is ready for next byte(TX mode)"]
     tx_ready @ 15,
     #[doc = "RX fifo threshold reached (RX mode)"]
