@@ -95,6 +95,14 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
         // Poll until device is started up
         while rfm12b.int.is_high() {}
 
+        rfm12b.write_register::<Register>(Register::ConfigSetting,
+                                          registers::ConfigSetting::<Write>::default().get() as u16)?;
+
+
+        //rfm12b.modify_register(Register::ConfigSetting, |r| )
+
+
+        //rfm12b.read_register::<Register>(registers::StatusRead(0) = default());
         //while registers::StatusRead(rfm12b.read_register::<Register>(Register::StatusRead)?).por() == 1 {}
         // Set capacitance
         // Set Band
@@ -110,10 +118,7 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
         (self.spi, self.ncs, self.int, self.reset)
     }
 
-    fn read_register<R>(&mut self, register: Register) -> Result<u16, E>
-        where
-            R: Into<Register>,
-    {
+    fn read_register<R>(&mut self, register: Register) -> Result<u16, E> {
         self.ncs.set_low();
         let mut buffer: [u8; 2] = [register.addr(), 0];
         self.spi.transfer(&mut buffer)?;
@@ -122,10 +127,7 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
         Ok((buffer[0] as u16) << 8 | buffer[1] as u16)
     }
 
-    fn write_register<R>(&mut self, register: Register, value: u16) -> Result<(), E>
-        where
-            R: Into<Register>,
-    {
+    fn write_register<R>(&mut self, register: Register, value: u16) -> Result<(), E> {
         self.ncs.set_low();
         let buffer = [register.addr() | (value >> 8) as u8, value as u8];
         self.spi.write(&buffer)?;
@@ -137,10 +139,17 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
     fn modify_register<R, F>(&mut self, register: Register, f: F) -> Result<(), E>
         where
             F: FnOnce(u16) -> u16,
-            R: Into<Register>,
     {
         let r = self.read_register::<Register>(register)?;
         self.write_register::<Register>(register, f(r))
+    }
+
+    fn bit_field_set<R>(&mut self, register: Register, mask: u16) -> Result<(), E> {
+        self.ncs.set_low();
+        self.spi.write(&[register.addr() | (mask >> 8) as u8, mask as u8])?;
+        self.ncs.set_high();
+
+        Ok(())
     }
 
 }
