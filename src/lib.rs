@@ -9,8 +9,8 @@ extern crate register;
 extern crate byteorder;
 extern crate embedded_hal as hal;
 extern crate crc16;
-
-
+extern crate fpa;
+extern crate cast;
 
 use byteorder::{ByteOrder, BE};
 use core::marker::PhantomData;
@@ -20,7 +20,7 @@ use register::*;
 
 use band::*;
 
-//use cast::{usize, u16, u32W};
+use cast::{usize, u16, u32};
 use hal::blocking::delay::DelayMs;
 use hal::blocking;
 use hal::digital::{InputPin, OutputPin};

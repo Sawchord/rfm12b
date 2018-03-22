@@ -14,5 +14,12 @@ features = ["unproven"]
 default-features = false
 version = "^1.2.1"
 
+[dependencies.cast]
+default-features = false
+version = "^0.2.0"
+
 [dependencies.crc16]
 version = "^0.3.4"
+
+[dependencies.fpa]
+version = "^0.1.0"
