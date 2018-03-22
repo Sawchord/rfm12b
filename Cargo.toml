@@ -8,6 +8,7 @@ path = "../register"
 
 [dependencies.embedded-hal]
 version = "^0.1.2"
+default-features = false
 features = ["unproven"]
 
 [dependencies.byteorder]
@@ -19,7 +20,9 @@ default-features = false
 version = "^0.2.0"
 
 [dependencies.crc16]
+default-features = false
 version = "^0.3.4"
 
 [dependencies.fpa]
+default-features = false
 version = "^0.1.0"
