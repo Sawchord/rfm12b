@@ -1,3 +1,5 @@
+use core::mem;
+use byteorder::{ByteOrder, BE, LE};
 
 pub trait U16Ext {
     fn from_bytes(low: u8, high: u8) -> Self;
