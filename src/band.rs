@@ -13,6 +13,9 @@ pub enum Rfm12bConfigError {
     BitRateNotSupportedError,
 }
 
+// TODO: Baseband to register
+// TODO: Move Bitrate to Register into trait insteat of impl
+// TODO: OutputPower to register
 
 pub trait Rfm12bBand {
     fn baseband_id() -> u8;

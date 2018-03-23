@@ -104,7 +104,7 @@ register!(DataFilter, 0x2C, u8, {
     #[doc = "select filter type (0: internal digital, 1: external analog)"]
     filter_type @ 4,
     #[doc = "DQD threshold"]
-    dqd_theshold @ 0..3,
+    dqd_threshold @ 0..3,
 });
 
 register!(FifoAndResetMode, 0x80, u8, {
@@ -152,6 +152,8 @@ register!(TxConfig, 0x0000, u16, {
 register!(PllSetting, 0x77, u8, {
     #[doc = "Output clock frequency"]
     output_clock_freq @ 5..7,
+    #[doc = "Low power XCtal (slower startup less mA)"]
+    low_power_xtal @ 4,
     #[doc = "Enable delay in phase detector"]
     enable_phase_detec_delay @ 3,
     #[doc = "Disable pll dithering"]
