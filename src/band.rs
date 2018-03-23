@@ -26,7 +26,20 @@ pub trait Rfm12bBand {
     fn channel_to_freq(chan: u16) -> Result<I16F16, Rfm12bConfigError>;
     fn freq_to_register(freq: I16F16) -> Result<u16, Rfm12bConfigError>;
 
-    fn bitrate_to_register(bps: u32) -> Result<(bool, u8), Rfm12bConfigError>;
+    fn bitrate_to_register(bps: u32) -> Result<(bool, u8), Rfm12bConfigError> {
+        if bps < 600 || bps > 115200 {
+            return Err(Rfm12bConfigError::BitRateNotSupportedError)
+        }
+
+        let cs0_reg = (10_000_000 / (29 * bps)) as u32;
+        let cs1_reg = (10_000_000 / (29 * bps * 8)) as u32;
+
+        if cs1_reg > 127 {
+            Ok((true, cs1_reg as u8))
+        } else {
+            Ok((false, cs0_reg as u8))
+        }
+    }
 
 }
 
@@ -73,20 +86,6 @@ impl Rfm12bBand for Rfm12bMhz433 {
         Ok(I16F16(433.075_f32).unwrap() + I16F16(0.025_f32).unwrap() * I16F16(chan).unwrap())
     }
 
-    fn bitrate_to_register(bps: u32) -> Result<(bool, u8), Rfm12bConfigError> {
-        if bps < 600 || bps > 115200 {
-            return Err(Rfm12bConfigError::BitRateNotSupportedError)
-        }
-
-        let cs0_reg = (10_000_000 / (29 * bps)) as u32;
-        let cs1_reg = (10_000_000 / (29 * bps * 8)) as u32;
-
-        if cs1_reg > 127 {
-            Ok((true, cs1_reg as u8))
-        } else {
-            Ok((false, cs0_reg as u8))
-        }
-    }
 }
 
 
