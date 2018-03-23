@@ -1,6 +1,7 @@
 #![no_std]
 mod registers;
 mod band;
+mod util;
 
 
 #[macro_use]
@@ -12,13 +13,14 @@ extern crate crc16;
 extern crate fpa;
 extern crate cast;
 
+use register::*;
+use band::*;
+use util::*;
+
 use byteorder::{ByteOrder, BE};
 use core::marker::PhantomData;
 
 use registers::Register;
-use register::*;
-
-use band::*;
 
 use cast::{usize, u16, u32};
 use hal::blocking::delay::DelayMs;
@@ -83,13 +85,16 @@ impl<E, SPI, NCS, INT, RESET> Rfm12b<SPI, NCS, INT, RESET, Rfm12bMhz433>
             pattern: pattern,
         };
 
+        // NOTE: We leave Frequency at default (434.15)
+        // We also leave Baudrate at default(9600)
+        // These values should be set accordingly later in the configuration process
 
         // Read the status (this is required to get radio outp of reset state)
         let status = rfm12b.read_register(Register::StatusRead)?;
 
         // Poll until device is started up
         //while rfm12b.int.is_high() {}
-        
+
         delay.delay_ms(100);
 
         rfm12b.write_register(Register::ConfigSetting,
@@ -108,9 +113,6 @@ impl<E, SPI, NCS, INT, RESET> Rfm12b<SPI, NCS, INT, RESET, Rfm12bMhz433>
                                   .get() as u16
         )?;
 
-        // NOTE: We leave Frequency at default (434.15)
-        // We also leave Baudrate at default(9600)
-        // These values should be set accordingly later in the configuration process
 
         rfm12b.write_register(Register::RxControl,
                               registers::RxControl::<Write>::default()
