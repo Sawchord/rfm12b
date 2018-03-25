@@ -9,21 +9,12 @@ pub enum State {
     Receive(u8),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Transmission {
-    None,
-    Preamble(u8),
-    Pattern(u8),
-    Payload(u8),
-    Crc16(u8),
-}
-
-
 #[derive(Clone, Debug)]
 pub enum Error<E> {
     StateError,
     ConfigError,
     TransmitterBusyError,
+    Crc16Error,
 
     // TODO: Implement correctly, to distinguish SPI, Config and Send Errors
     Spi(E),

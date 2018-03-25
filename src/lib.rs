@@ -10,6 +10,9 @@ extern crate register;
 #[macro_use]
 extern crate arrayref;
 
+#[macro_use]
+extern crate matches;
+
 extern crate byteorder;
 extern crate embedded_hal as hal;
 extern crate crc16;
@@ -49,18 +52,15 @@ pub struct Rfm12b<SPI, NCS, INT, RESET, BAND> {
     _ism_band: PhantomData<BAND>,
 
     state: State,
-    transmission_state: Transmission,
 
     // Max payload length is 128 bytes
-    // 5 bytes overhead
+    // 7 bytes overhead
     buffer: [u8; 135],
 
     packet_length: u8,
 
     pattern: u8,
 
-    /// Running CRC value
-    crc16: crc16::State<crc16::ARC>,
 }
 
 impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
@@ -91,20 +91,18 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
             int: int,
             reset: reset,
             state: State::Init,
-            transmission_state: Transmission::None,
-            crc16: crc16::State::new(),
             _ism_band: PhantomData,
             buffer: [0; 135],
             packet_length: 0,
             pattern: pattern,
         };
 
-        // NOTE: We leave Frequency at default (434.15)
-        // We also leave Baudrate at default(9600)
+        // NOTE: We leave Frequency at default (434.15 Mhz)
+        // We also leave Baudrate at default(9600 bps)
         // These values should be set accordingly later in the configuration process
 
         // Read the status (this is required to get radio outp of reset state)
-        let status = rfm12b.read_register(Register::StatusRead)?;
+        rfm12b.read_register(Register::StatusRead)?;
 
         delay.delay_ms(100);
 
@@ -192,6 +190,8 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
 
         if self.state == State::Idle {
 
+            self.state = State::Send(3);
+
             // Encode the packet
             self.encode_packet(bytes);
 
@@ -199,11 +199,10 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
             self.write_register(Register::TxRegisterWrite, 0xAA)?;
             self.write_register(Register::TxRegisterWrite, 0xAA)?;
 
-            self.state = State::Send(3);
             // If no interupt pin start polling for next bytes
             if TypeId::of::<INT>() == TypeId::of::<Unconnected>() {
                 for i in 3..self.packet_length {
-                    self._send();
+                    self._send()?;
                 }
             }
 
@@ -228,9 +227,11 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
     }
 
     fn encode_packet(&mut self, bytes: &[u8]) {
+        assert!(matches!(self.state, State::Send(_)));
+
         self.packet_length = bytes.len() as u8;
 
-        // Initialize CRC
+        // Calculate CRC
         let mut crc16 = crc16::State::<crc16::ARC>::new();
         crc16.update(self.buffer.as_ref());
 
@@ -239,8 +240,33 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
         *array_mut_ref![buf, 0, 7] = [0xAA, 0xAA, 0x2D, self.pattern, self.packet_length,
             (crc16.get() >> 8) as u8, crc16.get() as u8];
 
-         for i in 7..self.packet_length+7 {
+        for i in 7..self.packet_length+7 {
              buf[i as usize] = bytes[i as usize];
+        }
+    }
+
+    // FIXME: totally based on assumptions
+    fn decode_packet(&mut self, bytes: &mut [u8]) -> Result<u8, Error<E>> {
+        assert!(matches!(self.state, State::Receive(_)));
+
+        // TODO: Check, that preamble and synchron pattern are not received
+        // TODO: Check that no former
+
+        let mut buf = &mut self.buffer;
+        self.packet_length = buf[0];
+
+        for i in 3..self.packet_length+3 {
+            bytes[i as usize] = buf[i as usize];
+        }
+
+        // Calculate CRC
+        let mut crc16 = crc16::State::<crc16::ARC>::new();
+        crc16.update(buf);
+
+        if crc16.get() == ( (buf[1] as u16) << 8 | buf [2] as u16) {
+            Ok(self.packet_length)
+        } else {
+            Err(Error::Crc16Error)
         }
     }
 
