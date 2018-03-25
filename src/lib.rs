@@ -7,6 +7,9 @@ mod util;
 #[macro_use]
 extern crate register;
 
+#[macro_use]
+extern crate arrayref;
+
 extern crate byteorder;
 extern crate embedded_hal as hal;
 extern crate crc16;
@@ -48,8 +51,9 @@ pub struct Rfm12b<SPI, NCS, INT, RESET, BAND> {
     state: State,
     transmission_state: Transmission,
 
-
-    buffer: [u8; 128],
+    // Max payload length is 128 bytes
+    // 5 bytes overhead
+    buffer: [u8; 135],
 
     packet_length: u8,
 
@@ -90,7 +94,7 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
             transmission_state: Transmission::None,
             crc16: crc16::State::new(),
             _ism_band: PhantomData,
-            buffer: [0; 128],
+            buffer: [0; 135],
             packet_length: 0,
             pattern: pattern,
         };
@@ -178,29 +182,28 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
         (self.spi, self.ncs, self.int, self.reset)
     }
 
+    // TODO: Handle interups
+    pub fn interrupt_handle() -> () {}
+
+
     pub fn send(&mut self, bytes: &[u8]) -> Result<(), Error<E>> {
         assert!(bytes.len() < 128);
 
 
         if self.state == State::Idle {
-            self.state = State::Send;
 
-            // Copy the buffer into local memory, the
-            self.buffer.clone_from_slice(bytes);
-
-            // Initialize CRC
-            self.crc16 = crc16::State::new();
-            self.crc16.update(self.buffer.as_ref());
+            // Encode the packet
+            self.encode_packet(bytes);
 
             // Start sending
             self.write_register(Register::TxRegisterWrite, 0xAA)?;
             self.write_register(Register::TxRegisterWrite, 0xAA)?;
-            self.transmission_state = Transmission::Preamble(0);
 
-            // If no input start polling for next bytes
+            self.state = State::Send(3);
+            // If no interupt pin start polling for next bytes
             if TypeId::of::<INT>() == TypeId::of::<Unconnected>() {
-                while self.transmission_state != Transmission::None {
-                    self._send(bytes);
+                for i in 3..self.packet_length {
+                    self._send();
                 }
             }
 
@@ -212,41 +215,33 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
         Ok(())
     }
 
-    fn _send(&mut self, bytes: &[u8]) -> Result<(), Error<E>> {
-        match self.transmission_state {
-            Transmission::Preamble(0) => {
-                self.write_register(Register::TxRegisterWrite, 0x2D)?;
-                self.transmission_state = Transmission::Preamble(1);
-            },
-            Transmission::Preamble(1) => {
-                let pattern = self.pattern;
-                self.write_register(Register::TxRegisterWrite, pattern as u16)?;
-                self.transmission_state = Transmission::Payload(0);
-                },
-            Transmission::Payload(b) => {
+    fn _send(&mut self) -> Result<(), Error<E>> {
+        match self.state {
+            State::Send(b) => {
                 let byte = self.buffer[b as usize];
                 self.write_register(Register::TxRegisterWrite, byte as u16)?;
-
-                if b < self.packet_length {
-                    self.transmission_state = Transmission::Payload(b+1);
-                } else {
-                    self.transmission_state = Transmission::Crc16(0);
-                }
             },
-            Transmission::Crc16(0) => {
-                let crc = self.crc16.get();
-                self.write_register(Register::TxRegisterWrite, crc >> 8)?;
-                self.transmission_state = Transmission::Crc16(1);
-            }
-            Transmission::Crc16(1) => {
-                let crc = self.crc16.get();
-                self.write_register(Register::TxRegisterWrite, crc)?;
-                self.transmission_state = Transmission::None;
-            }
             _ => return Err(Error::StateError),
-        };
-        
+        }
+
         Ok(())
+    }
+
+    fn encode_packet(&mut self, bytes: &[u8]) {
+        self.packet_length = bytes.len() as u8;
+
+        // Initialize CRC
+        let mut crc16 = crc16::State::<crc16::ARC>::new();
+        crc16.update(self.buffer.as_ref());
+
+        let mut buf = &mut self.buffer;
+
+        *array_mut_ref![buf, 0, 7] = [0xAA, 0xAA, 0x2D, self.pattern, self.packet_length,
+            (crc16.get() >> 8) as u8, crc16.get() as u8];
+
+         for i in 7..self.packet_length+7 {
+             buf[i as usize] = bytes[i as usize];
+        }
     }
 
 
@@ -322,6 +317,13 @@ mod tests {
     #[test]
     fn it_works() {
         assert_eq!(2 + 2, 4);
+    }
+
+    #[test]
+    fn array_ref_test() {
+        let mut buf: &mut [u8; 4] = &mut [0; 4];
+        *array_mut_ref![buf, 0, 2] = [0xAA, 0xAA];
+        assert_eq!(buf, &[0xAA, 0xAA, 0x00, 0x00]);
     }
 }
 

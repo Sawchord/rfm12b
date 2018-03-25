@@ -23,6 +23,10 @@ version = "^0.2.0"
 default-features = false
 version = "^0.3.4"
 
+[dependencies.arrayref]
+default-features = false
+version = "^0.3.4"
+
 [dependencies.fpa]
 default-features = false
 version = "^0.1.0"

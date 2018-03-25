@@ -5,8 +5,8 @@ use byteorder::{ByteOrder, BE, LE};
 pub enum State {
     Init,
     Idle,
-    Send,
-    Receiver
+    Send(u8),
+    Receive(u8),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
