@@ -78,7 +78,6 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
         reset: RESET,
         delay: &mut D,
         mut rx_buf_sz: u16,
-        src: [u8; 6],
         pattern: u8
     ) -> Result<Self, Error<E>> where
         D: DelayMs<u8>,
@@ -250,7 +249,7 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
         assert!(matches!(self.state, State::Receive(_)));
 
         // TODO: Check, that preamble and synchron pattern are not received
-        // TODO: Check that no former
+        // TODO: Need to clear buffer at any point
 
         let mut buf = &mut self.buffer;
         self.packet_length = buf[0];
@@ -307,36 +306,6 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
 
 }
 
-// TODO: Move this into util
-pub struct Unconnected;
-pub unsafe trait ResetPin: 'static {
-    #[doc(hidden)]
-    fn reset(&mut self);
-}
-
-unsafe impl ResetPin for Unconnected {
-    fn reset(&mut self) {}
-}
-
-unsafe impl<OP> ResetPin for OP
-    where
-        OP: OutputPin + 'static,
-{
-    fn reset(&mut self) {
-        self.set_low();
-        self.set_high();
-    }
-}
-
-pub unsafe trait IntPin: 'static {}
-
-unsafe impl IntPin for Unconnected {}
-
-unsafe impl<IP> IntPin for IP
-    where
-        IP: InputPin + 'static,
-{
-}
 
 #[cfg(test)]
 mod tests {

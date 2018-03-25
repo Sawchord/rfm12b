@@ -1,6 +1,8 @@
 use core::mem;
 use byteorder::{ByteOrder, BE, LE};
 
+use hal::digital::{InputPin, OutputPin};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum State {
     Init,
@@ -58,4 +60,35 @@ impl U16Ext for u16 {
         LE::write_u16(&mut bytes, self);
         bytes
     }
+}
+
+
+pub struct Unconnected;
+pub unsafe trait ResetPin: 'static {
+    #[doc(hidden)]
+    fn reset(&mut self);
+}
+
+unsafe impl ResetPin for Unconnected {
+    fn reset(&mut self) {}
+}
+
+unsafe impl<OP> ResetPin for OP
+    where
+        OP: OutputPin + 'static,
+{
+    fn reset(&mut self) {
+        self.set_low();
+        self.set_high();
+    }
+}
+
+pub unsafe trait IntPin: 'static {}
+
+unsafe impl IntPin for Unconnected {}
+
+unsafe impl<IP> IntPin for IP
+    where
+        IP: InputPin + 'static,
+{
 }

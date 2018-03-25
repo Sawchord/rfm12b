@@ -16,7 +16,6 @@ pub enum Rfm12bConfigError {
 }
 
 // TODO: Baseband to register
-// TODO: Move Error into its own file
 // TODO: OutputPower to register
 
 pub trait Rfm12bBand {
