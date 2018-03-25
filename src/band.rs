@@ -27,7 +27,7 @@ pub trait Rfm12bBand {
     fn channel_to_freq(chan: u16) -> Result<I16F16, Rfm12bConfigError>;
     fn freq_to_register(freq: I16F16) -> Result<u16, Rfm12bConfigError>;
 
-    fn bitrate_to_register(bps: u32) -> Result<(bool, u8), Rfm12bConfigError> {
+    fn baudrate_to_register(bps: u32) -> Result<(bool, u8), Rfm12bConfigError> {
         if bps < 600 || bps > 115200 {
             return Err(Rfm12bConfigError::BitRateNotSupportedError)
         }

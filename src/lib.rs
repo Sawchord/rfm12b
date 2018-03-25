@@ -26,12 +26,12 @@ use util::*;
 use core::marker::PhantomData;
 use core::any::TypeId;
 
-//use byteorder::{ByteOrder, BE};
+use fpa::{I16F16, I7F1};
 
 use registers::Register;
 
 use cast::{usize, u16, u32};
-use hal::blocking::delay::DelayMs;
+use hal::blocking::delay::DelayUs;
 use hal::blocking;
 use hal::digital::{InputPin, OutputPin};
 use hal::spi::{Mode, Phase, Polarity};
@@ -43,7 +43,7 @@ pub const MODE: Mode = Mode {
 
 
 // TODO: Use u16 Extension instead of casting
-pub struct Rfm12b<SPI, NCS, INT, RESET, BAND> {
+pub struct Rfm12b<SPI, NCS, INT, RESET, BAND, D> {
     ncs: NCS,
     int: INT,
     reset: RESET,
@@ -51,36 +51,38 @@ pub struct Rfm12b<SPI, NCS, INT, RESET, BAND> {
 
     _ism_band: PhantomData<BAND>,
 
-    state: State,
+    delay: D,
 
     // Max payload length is 128 bytes
     // 7 bytes overhead
     buffer: [u8; 135],
-
     packet_length: u8,
-
     pattern: u8,
 
+    freq: I16F16,
+    baud: u32,
+
+    state: State,
 }
 
-impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
+impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
     where
         SPI: blocking::spi::Transfer<u8, Error = E> + blocking::spi::Write<u8, Error = E>,
         NCS: OutputPin,
         INT: IntPin + InputPin,
         RESET: ResetPin,
         BAND: Rfm12bBand + 'static,
+        D: DelayUs<u32>,
 {
-    pub fn new<D>(
+    pub fn new(
         spi: SPI,
         ncs: NCS,
         int: INT,
         reset: RESET,
-        delay: &mut D,
+        delay: D,
         mut rx_buf_sz: u16,
         pattern: u8
     ) -> Result<Self, Error<E>> where
-        D: DelayMs<u8>,
         RESET: ResetPin,
         INT: IntPin,
     {
@@ -89,11 +91,14 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
             ncs: ncs,
             int: int,
             reset: reset,
-            state: State::Init,
             _ism_band: PhantomData,
+            delay: delay,
             buffer: [0; 135],
             packet_length: 0,
             pattern: pattern,
+            freq: I16F16(434.15_f32).unwrap(),
+            baud: 9600,
+            state: State::Init,
         };
 
         // NOTE: We leave Frequency at default (434.15 Mhz)
@@ -103,7 +108,7 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
         // Read the status (this is required to get radio outp of reset state)
         rfm12b.read_register(Register::StatusRead)?;
 
-        delay.delay_ms(100);
+        rfm12b.delay.delay_us(100000);
 
         let baseband_id = if TypeId::of::<BAND>() == TypeId::of::<Rfm12bMhz433>() {
             band::Rfm12bMhz433::baseband_id()
@@ -205,8 +210,10 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
 
             // If no interupt pin start polling for next bytes
             if TypeId::of::<INT>() == TypeId::of::<Unconnected>() {
-                // TODO: Need to poll until next byte can be sent out
                 for i in 3..self.packet_length {
+
+                    // To reduce traffic, we delay before polling
+                    self.delay.delay_us(1_000_000/self.baud);
 
                     while registers::StatusRead(self.read_register(Register::StatusRead)?).tx_ready() != 0 {}
                     self._send()?;
