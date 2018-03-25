@@ -16,7 +16,7 @@ pub enum Register{
     DataFilter = 0xC2,
     FifoAndResetMode = 0xCA,
     SynchPattern = 0xCE,
-    ReceiverFifo = 0xB0,
+    RxRegisterRead = 0xB0,
     Afc = 0xC4,
     TxConfig = 0x98,
     PllSetting = 0xCC,

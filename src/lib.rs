@@ -126,8 +126,6 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
                                   .disable_clock_output(1)
                                   .get() as u16
         )?;
-
-
         rfm12b.write_register(Register::RxControl,
                               registers::RxControl::<Write>::default()
                               .p16_func(1) // Set P16 to output VDI signal
@@ -194,13 +192,23 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
             // Encode the packet
             self.encode_packet(bytes);
 
-            // Start sending
+            // Fill send fifo with first bytes
             self.write_register(Register::TxRegisterWrite, 0xAA)?;
             self.write_register(Register::TxRegisterWrite, 0xAA)?;
 
+            // Go into send mode
+            self.modify_register(Register::PowerManagement,
+                                 |w| registers::PowerManagement(w as u8)
+                                     .modify()
+                                     .enable_sender_chain(1)
+                                     .get() as u16);
+
             // If no interupt pin start polling for next bytes
             if TypeId::of::<INT>() == TypeId::of::<Unconnected>() {
+                // TODO: Need to poll until next byte can be sent out
                 for i in 3..self.packet_length {
+
+                    while registers::StatusRead(self.read_register(Register::StatusRead)?).tx_ready() != 0 {}
                     self._send()?;
                 }
             }
@@ -213,14 +221,44 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
         Ok(())
     }
 
+    pub fn poll_receive(&mut self, bytes: &mut [u8]) -> Result<u8, Error<E>> {
+
+        let status = registers::StatusRead(self.read_register(Register::StatusRead)?);
+
+        Ok(1)
+    }
+
     fn _send(&mut self) -> Result<(), Error<E>> {
         match self.state {
             State::Send(b) => {
                 let byte = self.buffer[b as usize];
                 self.write_register(Register::TxRegisterWrite, byte as u16)?;
+                self.state = State::Send(b+1);
             },
             _ => return Err(Error::StateError),
         }
+
+        Ok(())
+    }
+
+    fn _receive(&mut self) -> Result<(), Error<E>> {
+        match self.state {
+            State::Receive(b) => {
+                let byte = self.read_register(Register::RxRegisterRead)? as u8;
+
+                self.buffer[b as usize] = byte;
+
+                if b == 0 {
+                    self.packet_length = byte;
+                } else if b >= self.packet_length {
+                    self.state = State::Idle;
+
+                    // TODO: Implement packet delivery mechanism
+                }
+
+            },
+            _ => return Err(Error::StateError),
+        };
 
         Ok(())
     }
@@ -252,7 +290,7 @@ impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
         // TODO: Need to clear buffer at any point
 
         let mut buf = &mut self.buffer;
-        self.packet_length = buf[0];
+        //self.packet_length = buf[0];
 
         for i in 3..self.packet_length+3 {
             bytes[i as usize] = buf[i as usize];
