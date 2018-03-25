@@ -8,6 +8,7 @@ pub enum State {
     Init,
     Idle,
     Send(u8),
+    PollingReceive,
     Receive(u8),
 }
 

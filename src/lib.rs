@@ -182,7 +182,8 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
         (self.spi, self.ncs, self.int, self.reset)
     }
 
-    // TODO: Handle interups
+    // TODO: Handle interrupts
+    // TODO: Implement callback style packet delivery mechanism
     pub fn interrupt_handle() -> () {}
 
 
@@ -190,49 +191,60 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
         assert!(bytes.len() < 128);
 
 
-        if self.state == State::Idle {
-
-            self.state = State::Send(3);
-
-            // Encode the packet
-            self.encode_packet(bytes);
-
-            // Fill send fifo with first bytes
-            self.write_register(Register::TxRegisterWrite, 0xAA)?;
-            self.write_register(Register::TxRegisterWrite, 0xAA)?;
-
-            // Go into send mode
-            self.modify_register(Register::PowerManagement,
-                                 |w| registers::PowerManagement(w as u8)
-                                     .modify()
-                                     .enable_sender_chain(1)
-                                     .get() as u16);
-
-            // If no interupt pin start polling for next bytes
-            if TypeId::of::<INT>() == TypeId::of::<Unconnected>() {
-                for i in 3..self.packet_length {
-
-                    // To reduce traffic, we delay before polling
-                    self.delay.delay_us(1_000_000/self.baud);
-
-                    while registers::StatusRead(self.read_register(Register::StatusRead)?).tx_ready() != 0 {}
-                    self._send()?;
-                }
-            }
-
-
-        } else {
+        if self.state != State::Idle {
             return Err(Error::TransmitterBusyError);
         }
 
+        self.state = State::Send(3);
+
+        // Encode the packet
+        self.encode_packet(bytes);
+
+        // Fill send fifo with first bytes
+        self.write_register(Register::TxRegisterWrite, 0xAA)?;
+        self.write_register(Register::TxRegisterWrite, 0xAA)?;
+
+        // Go into send mode
+        self.modify_register(Register::PowerManagement,
+                             |w| registers::PowerManagement(w as u8)
+                                 .modify()
+                                 .enable_sender_chain(1)
+                                 .get() as u16);
+
+        // If no interrupt pin start polling for next bytes
+        if TypeId::of::<INT>() == TypeId::of::<Unconnected>() {
+            for i in 3..self.packet_length {
+
+                // To reduce traffic, we delay before polling
+                self.delay.delay_us(1_000_000/self.baud);
+
+                while registers::StatusRead(self.read_register(Register::StatusRead)?).tx_ready() != 0 {}
+                self._send()?;
+            }
+        }
+        // If interrupts are enabled, the interrup_handle function will manage sending the
+        // rest of the data
         Ok(())
     }
 
-    pub fn poll_receive(&mut self, bytes: &mut [u8]) -> Result<u8, Error<E>> {
+    pub fn polling_receive(&mut self, bytes: &mut [u8]) -> Result<u8, Error<E>> {
 
-        let status = registers::StatusRead(self.read_register(Register::StatusRead)?);
+        if self.state != State::Idle {
+            return  Err(Error::StateError);
+        }
+        self.state = State::PollingReceive;
 
-        Ok(1)
+        while self.state != State::Idle {
+
+            if registers::StatusRead(
+                self.read_register(Register::StatusRead)?).rx_ready() == 1 {
+                self._receive()?;
+            }
+
+            // Slow down polling to reduce bus delay
+            self.delay.delay_us(500_000/self.baud);
+        }
+        Ok(self.decode_packet(bytes)?)
     }
 
     fn _send(&mut self) -> Result<(), Error<E>> {
@@ -259,8 +271,6 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
                     self.packet_length = byte;
                 } else if b >= self.packet_length {
                     self.state = State::Idle;
-
-                    // TODO: Implement packet delivery mechanism
                 }
 
             },
