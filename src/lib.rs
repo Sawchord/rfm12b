@@ -17,8 +17,10 @@ use register::*;
 use band::*;
 use util::*;
 
-use byteorder::{ByteOrder, BE};
 use core::marker::PhantomData;
+use core::any::TypeId;
+
+//use byteorder::{ByteOrder, BE};
 
 use registers::Register;
 
@@ -33,33 +35,37 @@ pub const MODE: Mode = Mode {
     polarity: Polarity::IdleLow,
 };
 
+
+// TODO: Use u16 Extension instead of casting
 pub struct Rfm12b<SPI, NCS, INT, RESET, BAND> {
-    int: INT,
     ncs: NCS,
+    int: INT,
     reset: RESET,
     spi: SPI,
 
-    ism_band: PhantomData<BAND>,
+    _ism_band: PhantomData<BAND>,
+
+    state: State,
+    transmission_state: Transmission,
+
+
+    buffer: [u8; 128],
+
+    packet_length: u8,
 
     pattern: u8,
 
     /// Running CRC value
     crc16: crc16::State<crc16::ARC>,
-
-    // MAC address of this node
-    //mac: u16,
-
 }
 
-// TODO: Is there a better way to implement this for all bands, without reimplementing all the functions
-// impl<E, SPI, NCS, INT, RESET, BAND>
-impl<E, SPI, NCS, INT, RESET> Rfm12b<SPI, NCS, INT, RESET, Rfm12bMhz433>
+impl<E, SPI, NCS, INT, RESET, BAND> Rfm12b<SPI, NCS, INT, RESET, BAND>
     where
         SPI: blocking::spi::Transfer<u8, Error = E> + blocking::spi::Write<u8, Error = E>,
         NCS: OutputPin,
         INT: IntPin + InputPin,
         RESET: ResetPin,
-        //BAND: Rfm12bBand,
+        BAND: Rfm12bBand + 'static,
 {
     pub fn new<D>(
         spi: SPI,
@@ -70,7 +76,7 @@ impl<E, SPI, NCS, INT, RESET> Rfm12b<SPI, NCS, INT, RESET, Rfm12bMhz433>
         mut rx_buf_sz: u16,
         src: [u8; 6],
         pattern: u8
-    ) -> Result<Self, E> where
+    ) -> Result<Self, Error<E>> where
         D: DelayMs<u8>,
         RESET: ResetPin,
         INT: IntPin,
@@ -80,8 +86,12 @@ impl<E, SPI, NCS, INT, RESET> Rfm12b<SPI, NCS, INT, RESET, Rfm12bMhz433>
             ncs: ncs,
             int: int,
             reset: reset,
+            state: State::Init,
+            transmission_state: Transmission::None,
             crc16: crc16::State::new(),
-            ism_band: PhantomData,
+            _ism_band: PhantomData,
+            buffer: [0; 128],
+            packet_length: 0,
             pattern: pattern,
         };
 
@@ -92,16 +102,19 @@ impl<E, SPI, NCS, INT, RESET> Rfm12b<SPI, NCS, INT, RESET, Rfm12bMhz433>
         // Read the status (this is required to get radio outp of reset state)
         let status = rfm12b.read_register(Register::StatusRead)?;
 
-        // Poll until device is started up
-        //while rfm12b.int.is_high() {}
-
         delay.delay_ms(100);
+
+        let baseband_id = if TypeId::of::<BAND>() == TypeId::of::<Rfm12bMhz433>() {
+            band::Rfm12bMhz433::baseband_id()
+        } else {
+            return Err(Error::ConfigError);
+        };
 
         rfm12b.write_register(Register::ConfigSetting,
                               registers::ConfigSetting::<Write>::default()
                                   .enable_data_register(1)
                                   .enable_fifo_mode(1)
-                                  .freq_band(band::Rfm12bMhz433::baseband_id()) // TODO: Make this general
+                                  .freq_band(baseband_id) // TODO: Make this general
                                   .crystal_load_capacitance(7) // 12pF
                                   .get() as u16
         )?;
@@ -156,6 +169,7 @@ impl<E, SPI, NCS, INT, RESET> Rfm12b<SPI, NCS, INT, RESET, Rfm12bMhz433>
                                   .get() as u16
         )?;
 
+        rfm12b.state = State::Idle;
         Ok(rfm12b)
     }
 
@@ -163,6 +177,78 @@ impl<E, SPI, NCS, INT, RESET> Rfm12b<SPI, NCS, INT, RESET, Rfm12bMhz433>
     pub fn free(self) -> (SPI, NCS, INT, RESET) {
         (self.spi, self.ncs, self.int, self.reset)
     }
+
+    pub fn send(&mut self, bytes: &[u8]) -> Result<(), Error<E>> {
+        assert!(bytes.len() < 128);
+
+
+        if self.state == State::Idle {
+            self.state = State::Send;
+
+            // Copy the buffer into local memory, the
+            self.buffer.clone_from_slice(bytes);
+
+            // Initialize CRC
+            self.crc16 = crc16::State::new();
+            self.crc16.update(self.buffer.as_ref());
+
+            // Start sending
+            self.write_register(Register::TxRegisterWrite, 0xAA)?;
+            self.write_register(Register::TxRegisterWrite, 0xAA)?;
+            self.transmission_state = Transmission::Preamble(0);
+
+            // If no input start polling for next bytes
+            if TypeId::of::<INT>() == TypeId::of::<Unconnected>() {
+                while self.transmission_state != Transmission::None {
+                    self._send(bytes);
+                }
+            }
+
+
+        } else {
+            return Err(Error::TransmitterBusyError);
+        }
+
+        Ok(())
+    }
+
+    fn _send(&mut self, bytes: &[u8]) -> Result<(), Error<E>> {
+        match self.transmission_state {
+            Transmission::Preamble(0) => {
+                self.write_register(Register::TxRegisterWrite, 0x2D)?;
+                self.transmission_state = Transmission::Preamble(1);
+            },
+            Transmission::Preamble(1) => {
+                let pattern = self.pattern;
+                self.write_register(Register::TxRegisterWrite, pattern as u16)?;
+                self.transmission_state = Transmission::Payload(0);
+                },
+            Transmission::Payload(b) => {
+                let byte = self.buffer[b as usize];
+                self.write_register(Register::TxRegisterWrite, byte as u16)?;
+
+                if b < self.packet_length {
+                    self.transmission_state = Transmission::Payload(b+1);
+                } else {
+                    self.transmission_state = Transmission::Crc16(0);
+                }
+            },
+            Transmission::Crc16(0) => {
+                let crc = self.crc16.get();
+                self.write_register(Register::TxRegisterWrite, crc >> 8)?;
+                self.transmission_state = Transmission::Crc16(1);
+            }
+            Transmission::Crc16(1) => {
+                let crc = self.crc16.get();
+                self.write_register(Register::TxRegisterWrite, crc)?;
+                self.transmission_state = Transmission::None;
+            }
+            _ => return Err(Error::StateError),
+        };
+        
+        Ok(())
+    }
+
 
     fn read_register(&mut self, register: Register) -> Result<u16, E> {
         self.ncs.set_low();
@@ -200,6 +286,7 @@ impl<E, SPI, NCS, INT, RESET> Rfm12b<SPI, NCS, INT, RESET, Rfm12bMhz433>
 
 }
 
+// TODO: Move this into util
 pub struct Unconnected;
 pub unsafe trait ResetPin: 'static {
     #[doc(hidden)]
@@ -237,3 +324,4 @@ mod tests {
         assert_eq!(2 + 2, 4);
     }
 }
+

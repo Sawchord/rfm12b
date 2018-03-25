@@ -1,6 +1,40 @@
 use core::mem;
 use byteorder::{ByteOrder, BE, LE};
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum State {
+    Init,
+    Idle,
+    Send,
+    Receiver
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Transmission {
+    None,
+    Preamble(u8),
+    Pattern(u8),
+    Payload(u8),
+    Crc16(u8),
+}
+
+
+#[derive(Clone, Debug)]
+pub enum Error<E> {
+    StateError,
+    ConfigError,
+    TransmitterBusyError,
+
+    // TODO: Implement correctly, to distinguish SPI, Config and Send Errors
+    Spi(E),
+}
+
+impl<E> From<E> for Error<E> {
+    fn from(e: E) -> Self {
+        Error::Spi(e)
+    }
+}
+
 pub trait U16Ext {
     fn from_bytes(low: u8, high: u8) -> Self;
     fn low(self) -> u8;

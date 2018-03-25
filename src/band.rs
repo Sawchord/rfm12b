@@ -1,6 +1,7 @@
 
 use fpa::I16F16;
 use core::result::{Result};
+//use core::convert::{From};
 use cast::{u8, u16};
 // The access traits of the registers
 
@@ -11,10 +12,11 @@ pub enum Rfm12bConfigError {
     ChannelNotSupportedError,
     ConversionError,
     BitRateNotSupportedError,
+    BandNotSupportedError,
 }
 
 // TODO: Baseband to register
-// TODO: Move Bitrate to Register into trait insteat of impl
+// TODO: Move Error into its own file
 // TODO: OutputPower to register
 
 pub trait Rfm12bBand {
@@ -72,7 +74,7 @@ impl Rfm12bBand for Rfm12bMhz433 {
         }
 
 
-        match (u16((freq/10) - 43 * 4000)) {
+        match u16((freq/10) - 43 * 4000) {
             Ok(num) => Ok(num),
             Err(err) => Err(Rfm12bConfigError::ConversionError),
         }
