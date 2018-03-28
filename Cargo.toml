@@ -3,6 +3,9 @@ name = "rfm12b"
 version = "0.1.0"
 authors = ["Leon Tan <leon.arian.tan@gmail.com>"]
 
+[dependencies]
+cortex-m = "0.4.3"
+
 [dependencies.register]
 default-features = false
 path = "../register"
@@ -31,3 +34,6 @@ version = "^0.3.4"
 [dependencies.fpa]
 default-features = false
 version = "^0.1.0"
+
+[dependencies.nb]
+version = "0.1.1"

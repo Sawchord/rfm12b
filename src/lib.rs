@@ -16,6 +16,9 @@ extern crate crc16;
 extern crate fpa;
 extern crate cast;
 
+extern crate cortex_m;
+use cortex_m::asm;
+
 use register::*;
 use band::*;
 use util::*;
@@ -52,7 +55,7 @@ pub struct Rfm12b<SPI, NCS, INT, RESET, BAND, D> {
 
     // Max payload length is 128 bytes
     // 7 bytes overhead
-    buffer: [u8; 135],
+    buffer: [u8; 136],
     packet_length: u8,
     pattern: u8,
 
@@ -89,7 +92,7 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
             reset: reset,
             _ism_band: PhantomData,
             delay: delay,
-            buffer: [0; 135],
+            buffer: [0; 136],
             packet_length: 0,
             pattern: pattern,
             freq: I16F16(434.15_f32).unwrap(),
@@ -120,13 +123,16 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
                                   .crystal_load_capacitance(7) // 12pF
                                   .get() as u16
         )?;
+
         rfm12b.write_register(Register::PowerManagement,
                               registers::PowerManagement::<Write>::default()
                                   .enable_receiver_chain(1)
+                                  .enable_sender_chain(0)
                                   .enable_synthesizer(1) // enable synthesizer (faster switch to TX)
                                   .disable_clock_output(1)
                                   .get() as u16
         )?;
+
         rfm12b.write_register(Register::RxControl,
                               registers::RxControl::<Write>::default()
                               .p16_func(1) // Set P16 to output VDI signal
@@ -134,6 +140,7 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
                               .rssi_thresh(2) // -91dB
                               .get() as u16
         )?;
+
         rfm12b.write_register(Register::DataFilter,
                               registers::DataFilter::<Write>::default()
                                   .auto_clock_recovery_lock(1)
@@ -142,27 +149,32 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
                                   .get() as u16
 
         )?;
+
         rfm12b.write_register(Register::FifoAndResetMode,
                               registers::FifoAndResetMode::<Write>::default()
                                   .enable_fifo_fill(1) // Enable fifo fill
                                   .sensitive_reset(1) // Disable sensitive reset
                                   .get() as u16
         )?;
+
         rfm12b.write_register(Register::SynchPattern,
                               registers::SynchPattern::<Write>::default()
                                   .synchron_pattern(pattern)
                                   .get() as u16
         )?;
+
         rfm12b.write_register(Register::Afc,
                               registers::Afc::<Write>::default()
                                   .enable_calculation(0) // deactivate (unusable)
                                   .get() as u16
         )?;
+
         rfm12b.write_register(Register::TxConfig,
                               registers::TxConfig::<Write>::default()
                                   .output_power(2) // -10 dB
                                   .get() as u16
         )?;
+
         rfm12b.write_register(Register::PllSetting,
                               registers::PllSetting::<Write>::default()
                                   .low_power_xtal(0) // disable
@@ -182,10 +194,9 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
     // TODO: Implement callback style packet delivery mechanism
     pub fn interrupt_handle() -> () {}
 
-
+    #[inline(never)]
     pub fn send(&mut self, bytes: &[u8]) -> Result<(), Error<E>> {
-        assert!(bytes.len() < 128);
-
+        assert!(bytes.len() <= 128);
 
         if self.state != State::Idle {
             return Err(Error::TransmitterBusyError);
@@ -204,15 +215,16 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
         self.modify_register(Register::PowerManagement,
                              |w| registers::PowerManagement(w as u8)
                                  .modify()
+                                 .enable_receiver_chain(0)
                                  .enable_sender_chain(1)
-                                 .get() as u16);
+                                 .get() as u16)?;
 
         // If no interrupt pin start polling for next bytes
         if TypeId::of::<INT>() == TypeId::of::<Unconnected>() {
             for i in 3..self.packet_length {
 
                 // To reduce traffic, we delay before polling
-                self.delay.delay_us(1_000_000/self.baud);
+                //self.delay.delay_us(1_000_000/self.baud);
 
                 while registers::StatusRead(self.read_register(Register::StatusRead)?).tx_ready() != 0 {}
                 self._send()?;
@@ -246,9 +258,22 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
     fn _send(&mut self) -> Result<(), Error<E>> {
         match self.state {
             State::Send(b) => {
-                let byte = self.buffer[b as usize];
-                self.write_register(Register::TxRegisterWrite, byte as u16)?;
-                self.state = State::Send(b+1);
+                if b < self.packet_length {
+                    let byte = self.buffer[b as usize];
+                    self.write_register(Register::TxRegisterWrite, byte as u16)?;
+                    self.state = State::Send(b+1);
+                } else {
+                    // Stop sending and go back to receiver mode
+                    self.modify_register(Register::PowerManagement,
+                                         |w| registers::PowerManagement(w as u8)
+                                             .modify()
+                                             .enable_receiver_chain(1)
+                                             .enable_sender_chain(0)
+                                             .get() as u16)?;
+
+                    self.state = State::Idle;
+                }
+
             },
             _ => return Err(Error::StateError),
         }
@@ -292,7 +317,7 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
             (crc16.get() >> 8) as u8, crc16.get() as u8];
 
         for i in 7..self.packet_length+7 {
-             buf[i as usize] = bytes[i as usize];
+             buf[i as usize] = bytes[(i - 7) as usize];
         }
     }
 
@@ -308,7 +333,8 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
         //self.packet_length = buf[0];
 
         for i in 3..self.packet_length+3 {
-            bytes[i as usize] = buf[i as usize];
+            // FIXME: Offsets are completely guessed at this point
+            bytes[(i - 3) as usize] = buf[i as usize];
         }
 
         // Calculate CRC
@@ -329,6 +355,8 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
         self.spi.transfer(&mut buffer)?;
         self.ncs.set_high();
 
+        self.delay.delay_us(10);
+
         Ok((buffer[0] as u16) << 8 | buffer[1] as u16)
     }
 
@@ -337,6 +365,8 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
         let buffer = [register.addr() | (value >> 8) as u8, value as u8];
         self.spi.write(&buffer)?;
         self.ncs.set_high();
+
+        self.delay.delay_us(10);
 
         Ok(())
     }

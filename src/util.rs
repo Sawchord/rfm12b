@@ -1,4 +1,4 @@
-#![no_std]
+
 use core::mem;
 use byteorder::{ByteOrder, BE, LE};
 

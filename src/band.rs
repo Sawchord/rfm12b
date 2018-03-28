@@ -1,4 +1,4 @@
-#![no_std]
+
 use fpa::I16F16;
 use core::result::{Result};
 //use core::convert::{From};
