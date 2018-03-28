@@ -1,3 +1,4 @@
+#![no_std]
 use core::mem;
 use byteorder::{ByteOrder, BE, LE};
 
@@ -86,10 +87,18 @@ unsafe impl<OP> ResetPin for OP
 
 pub unsafe trait IntPin: 'static {}
 
-unsafe impl IntPin for Unconnected {}
+
+impl InputPin for Unconnected {
+    fn is_high(&self) -> bool {
+        return false;
+    }
+
+    fn is_low(&self) -> bool {
+        return false;
+    }
+}
 
 unsafe impl<IP> IntPin for IP
     where
         IP: InputPin + 'static,
-{
-}
+{}

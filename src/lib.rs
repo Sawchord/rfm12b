@@ -1,7 +1,7 @@
 #![no_std]
 mod registers;
-mod band;
-mod util;
+pub mod band;
+pub mod util;
 
 
 #[macro_use]
@@ -9,9 +9,6 @@ extern crate register;
 
 #[macro_use]
 extern crate arrayref;
-
-#[macro_use]
-extern crate matches;
 
 extern crate byteorder;
 extern crate embedded_hal as hal;
@@ -80,7 +77,6 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
         int: INT,
         reset: RESET,
         delay: D,
-        mut rx_buf_sz: u16,
         pattern: u8
     ) -> Result<Self, Error<E>> where
         RESET: ResetPin,
@@ -281,7 +277,8 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
     }
 
     fn encode_packet(&mut self, bytes: &[u8]) {
-        assert!(matches!(self.state, State::Send(_)));
+        //assert!(matches!(self.state, State::Send(_)));
+        // TODO: Find replacement for this assert
 
         self.packet_length = bytes.len() as u8;
 
@@ -301,7 +298,8 @@ impl<E, SPI, NCS, INT, RESET, BAND, D> Rfm12b<SPI, NCS, INT, RESET, BAND, D>
 
     // FIXME: totally based on assumptions
     fn decode_packet(&mut self, bytes: &mut [u8]) -> Result<u8, Error<E>> {
-        assert!(matches!(self.state, State::Receive(_)));
+        //assert!(matches!(self.state, State::Receive(_)));
+        // TODO: Find replacement for this assert
 
         // TODO: Check, that preamble and synchron pattern are not received
         // TODO: Need to clear buffer at any point

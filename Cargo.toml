@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Leon Tan <leon.arian.tan@gmail.com>"]
 
 [dependencies.register]
+default-features = false
 path = "../register"
 
 [dependencies.embedded-hal]
@@ -16,21 +17,17 @@ default-features = false
 version = "^1.2.1"
 
 [dependencies.cast]
-version = "^0.2.0"
 default-features = false
+version = "^0.2.0"
 
 [dependencies.crc16]
-version = "^0.3.4"
 default-features = false
+version = "^0.3.4"
 
 [dependencies.arrayref]
-version = "^0.3.4"
 default-features = false
+version = "^0.3.4"
 
 [dependencies.fpa]
+default-features = false
 version = "^0.1.0"
-default-features = false
-
-[dependencies.matches]
-version = "^0.1.6"
-default-features = false

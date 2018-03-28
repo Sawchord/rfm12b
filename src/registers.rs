@@ -1,4 +1,4 @@
-
+#![no_std]
 use core::marker::PhantomData;
 use register::OffsetSize;
 use register::{Mask, Read, Write, RegisterGet};
